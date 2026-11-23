@@ -41,13 +41,15 @@ public class HeroPower
     private readonly List<IEffect> _effects;
 
     public string Name { get; }
-    public int ManaCost { get; }
+    public string Description { get; }
     public bool NeedsTarget { get; }
+    public int ManaCost { get; }
     public bool UsedThisTurn { get; private set; }
 
-    public HeroPower(string name, int cost, bool needsTarget, IEnumerable<IEffect> effects)
+    public HeroPower(string name, string descr, int cost, bool needsTarget, IEnumerable<IEffect> effects)
     {
         Name = name;
+        Description = descr;
         ManaCost = cost;
         NeedsTarget = needsTarget;
         _effects = effects.ToList();
@@ -119,12 +121,14 @@ public abstract class Card
     private readonly List<IEffect> _effects;
 
     public string Name { get; }
+    public string Description { get; }
     public int ManaCost { get; }
     
-    public Card(string name, int cost, IEnumerable<IEffect>? effects)
+    public Card(string name, string descr, int cost, IEnumerable<IEffect>? effects)
     {
         Name = name;
         ManaCost = cost;
+        Description = descr;
         _effects = effects?.ToList() ?? new List<IEffect>();
     }
 
@@ -145,8 +149,8 @@ public class MinionCard : Card
     public int Attack { get; }
     public int Health { get; }
 
-    public MinionCard(string name, int cost, int attack, int health, UnitType unitType, AttackProfile attackProfile, IEnumerable<IEffect>? effects = null) 
-        : base(name, cost, effects) 
+    public MinionCard(string name, string descr, int cost, int attack, int health, UnitType unitType, AttackProfile attackProfile, IEnumerable<IEffect>? effects = null) 
+        : base(name, descr, cost, effects) 
     {
         Attack = attack;
         Health = health;
@@ -159,19 +163,7 @@ public class MinionCard : Card
         if (cardCtx.Row is null || cardCtx.Column is null) throw new InvalidOperationException("Для розыгрыша существа нужны координаты (row, column)!");
         
         var minion = new Minion(Name, Attack, Health, UnitType, AttackProfile);
-
-        Func<int, int, bool> rule = UnitType switch
-        {
-            UnitType.Archer => (r, c) => r >= 1,
-            //UnitType.Mage => (r, c) => r == 2 && (c >= 1 && c <= 3), //td
-            UnitType.Infantry => (r, c) => r < 2 && (c >= 1 && c <= 3),
-           // UnitType.Picker => (r, c) => r != 2, //td
-           // UnityType.Fortification => (r, c) => r == 0, //td
-           // UnitType.Falanx => (r, c) => r == 0 && (c >= 1 && c <= 3), //td
-            //UnitType.SigeWeapon => (r, c) => r == 2, //td
-            UnitType.Cavalry => (r, c) => c <= 1 || c >= 3,
-            _ => throw new ArgumentException("Неизвестный тип юнита") 
-        };
+        var rule = PlacementRules.GetRule(UnitType);
 
         cardCtx.Context.Caster.BoardPlayer.Place(minion, cardCtx.Row.Value, cardCtx.Column.Value, rule);
         ApplyEffects(cardCtx.Context, cardCtx.Target);
@@ -183,30 +175,29 @@ public class SpellCard : Card
 {
     public SpellType SpellType { get; }
 
-    public SpellCard(string name, int cost, SpellType spellType, IEnumerable<IEffect>? effects = null)
-        : base(name, cost, effects)
+    public SpellCard(string name, string descr, int cost, SpellType spellType, IEnumerable<IEffect>? effects = null)
+        : base(name, descr, cost, effects)
     {
         SpellType = spellType;
     }   
 
     public override void PlayCard(CardPlayContext cardCtx)
     {
-        ApplyEffects(cardCtx.Context, cardCtx.Target)
+        ApplyEffects(cardCtx.Context, cardCtx.Target);
         Console.WriteLine($"карта {Name} разыграна!"); // заглушка
     }
 }
 
 //тут стол
-public record Position(int row, int column);
 
 public class Board
 {
     const int BaseRows = 3;
     const int BaseColumn = 5;
 
-    private readonly Entity?[,] _cells = new Entity?[BaseRows, BaseColumn];
+    private readonly Minion?[,] _cells = new Minion?[BaseRows, BaseColumn];
 
-    public Entity? this[int row, int column]
+    public Minion? this[int row, int column]
     {
         get
         {
@@ -220,7 +211,9 @@ public class Board
         }
     }
 
-    public void Place(Entity entity, int row, int column, Func<int, int, bool> canPlace)
+    public Minion? GetCell(int row, int column) => _cells[row, column];
+
+    public void Place(Minion entity, int row, int column, Func<int, int, bool> canPlace)
     {
         if (entity is null) throw new ArgumentNullException();
         if (this[row, column] != null) throw new InvalidOperationException("Клетка уже занята!");
@@ -307,7 +300,8 @@ public class Hand
     {
         foreach(Card card in cardList)
         {
-            if (_hand.Count == MaxCardCount) throw new InvalidOperationException("Рука переполнена, нельзя взять еще одну карту.");
+            if (_hand.Count == MaxCardCount) 
+                throw new InvalidOperationException("Рука переполнена, нельзя взять еще одну карту.");
 
             _hand.Add(card);
         }
@@ -405,15 +399,3 @@ public class Player
 }
 
 //тут будет игровой процесс
-
-public class GameContext
-{
-    public Player Caster { get; }
-    public Player Opponent { get; }
-
-    public GameContext(Player caster, Player opponent)
-    { 
-        Caster = caster; 
-        Opponent = opponent; 
-    }
-}
